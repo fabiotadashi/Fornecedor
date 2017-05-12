@@ -1,45 +1,48 @@
 package br.com.fiap.fornecedor.service;
 
-import java.io.UnsupportedEncodingException;
-import java.util.Base64;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.StringTokenizer;
+
+import javax.xml.ws.WebServiceContext;
+import javax.xml.ws.handler.MessageContext;
+
+import br.com.fiap.fornecedor.exception.FornecedorException;
 
 public class AuthenticationService {
 
 	private static Map<String, String> usersMap;
+	private static final String ACESSO_NAO_AUTORIZADO = "Acesso nao autorizado";
 	
 	public AuthenticationService() {
 		usersMap =  new HashMap<String, String>();
 		usersMap.put("gerente", "123456");
 		usersMap.put("lojista", "123456");
 	}
+	
+	public void autheticate(WebServiceContext webServiceContext) throws FornecedorException {
+		MessageContext messageContext = webServiceContext.getMessageContext();
 
+		Map<?,?> requestHeaders = (Map<?,?>) messageContext.get(MessageContext.HTTP_REQUEST_HEADERS);
+		List<?> usernameList = (List<?>) requestHeaders.get("username");
+		List<?> passwordList = (List<?>) requestHeaders.get("password");
+		String username = "";
+		String password = "";
 
-
-	public boolean autheticate(String authorizationHeader) {
-		if(authorizationHeader == null) return false;
-		
-		final String encodedUserPassword = authorizationHeader.replaceFirst("Basic" + " ","");
-		String userAndPassword = null;
-		byte[] decodedBytes = Base64.getDecoder().decode(encodedUserPassword);
-		try {
-			userAndPassword = new String(decodedBytes, "UTF-8");
-		} catch (UnsupportedEncodingException e) {
-			e.printStackTrace();
+		if (usernameList != null) {
+			username = usernameList.get(0).toString();
 		}
-		
-		final StringTokenizer tokenizer = new StringTokenizer(userAndPassword, ":");
-		if(tokenizer.countTokens() < 2 ) return false;
-		
-		final String user = tokenizer.nextToken();
-		final String password = tokenizer.nextToken();
-		
-		if(usersMap.get(user) == null){
-			return false;
+
+		if (passwordList != null) {
+			password = passwordList.get(0).toString();
+		}
+
+		if(usersMap.get(username) == null){
+			throw new FornecedorException(ACESSO_NAO_AUTORIZADO);
 		}else{
-			return usersMap.get(user).equals(password);
+			if(!usersMap.get(username).equals(password)){
+				throw new FornecedorException(ACESSO_NAO_AUTORIZADO);
+			}
 		}
 	}
 

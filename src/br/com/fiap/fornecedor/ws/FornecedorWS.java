@@ -25,8 +25,13 @@ public class FornecedorWS {
 	
 	public FornecedorWS() {
 		produtos = new ArrayList<>();
+		pedidosRealizados = new ArrayList<>();
 		service = new AuthenticationService();
+		
 		// TODO inicializar lista com produtos -> ver com o grupo Loja
+		produtos.add(new ProdutoDTO(1, "Produto 1", 20));
+		produtos.add(new ProdutoDTO(2, "Produto 2", 14.4));
+		produtos.add(new ProdutoDTO(3, "Produto 3", 34.9));
 	}
 	
 	@WebMethod

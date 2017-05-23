@@ -1,15 +1,27 @@
 package br.com.fiap.fornecedor.ws;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Properties;
 
 import javax.annotation.Resource;
 import javax.jws.WebMethod;
 import javax.jws.WebService;
+import javax.ws.rs.client.Client;
+import javax.ws.rs.client.ClientBuilder;
+import javax.ws.rs.client.Entity;
+import javax.ws.rs.client.Invocation.Builder;
+import javax.ws.rs.client.WebTarget;
+import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.Response;
 import javax.xml.ws.WebServiceContext;
 
+import br.com.fiap.fornecedor.dto.FreteDTO;
 import br.com.fiap.fornecedor.dto.PedidoDTO;
 import br.com.fiap.fornecedor.dto.ProdutoDTO;
+import br.com.fiap.fornecedor.dto.RetornoTransportadoraDTO;
 import br.com.fiap.fornecedor.exception.FornecedorException;
 import br.com.fiap.fornecedor.service.AuthenticationService;
 
@@ -18,6 +30,7 @@ public class FornecedorWS {
 
 	private static List<ProdutoDTO> produtos = new ArrayList<>();
 	private static List<PedidoDTO> pedidosRealizados = new ArrayList<>();
+	private static final Properties properties = new Properties();
 	private AuthenticationService service = new AuthenticationService();
 	
 	static {
@@ -35,6 +48,13 @@ public class FornecedorWS {
 		produtos.add(new ProdutoDTO(12, "Game: Injustice 2 Ed. Limitada PS4", 249.90));
 		produtos.add(new ProdutoDTO(13, "Game: Injustice 2 + Camiseta - PS4", 269.99));
 		produtos.add(new ProdutoDTO(14, "Massageador Eletrico Digital Para Dores E Tensao Muscular Acupuntura Fisioterapia Lcd Com 4 Eletrod", 44.99));
+		
+		try (InputStream in = FornecedorWS.class.getClassLoader().getResourceAsStream("fornecedor.properties")) {
+			properties.load(in);
+		} catch (IOException e) {
+			System.err.println("Erro ao carregar arquivo de propriedades");
+			e.printStackTrace();
+		}
 	}
 	
 	@Resource
@@ -47,18 +67,50 @@ public class FornecedorWS {
 	}
 	
 	@WebMethod
-	public boolean efetuarPedido(PedidoDTO pedidoDTO) throws FornecedorException {
+	public boolean efetuarPedido(PedidoDTO pedido) throws FornecedorException {
 		service.autheticate(webServiceContext);
-		pedidosRealizados.add(pedidoDTO);
+		pedidosRealizados.add(pedido);
+		
+		
 		
 		// TODO Emitir nota fiscal no WS do grupo Governo
 		
 		// TODO Debitar valor total do grupo Financeira
 		
-		// TODO Solicitar entrega no grupo Transportador
+		// Solicitar entrega no grupo Transportadora
+		try {
+			Response response = gerarFrete(pedido);
+			if (response.getStatus() >= 400) {
+				RetornoTransportadoraDTO retorno = response.readEntity(RetornoTransportadoraDTO.class);
+				System.err.println("Erro ao gerar frete na trasportadora");
+				System.err.println(retorno.getMensagem());
+				return false;
+			}
+		} catch (Exception e) {
+			System.err.println("Erro na requisição de geração de frete");
+			e.printStackTrace();
+			return false;
+		}
 		
 		// Se todas as integraÃ§Ãµes forem bem sucedidas retornar true
 		return true;
+	}
+	
+	private static Response gerarFrete(PedidoDTO pedido) {
+		Client client = ClientBuilder.newClient();
+		WebTarget target = client.target(properties.getProperty("transportadora-url")).path(properties.getProperty("transportadora-path"));
+		Builder builder = target.request(MediaType.APPLICATION_JSON);
+		FreteDTO frete = criarFrete(pedido);
+		return builder.post(Entity.entity(frete, MediaType.APPLICATION_JSON));
+	}
+	
+	private static FreteDTO criarFrete(PedidoDTO pedido) {
+		FreteDTO frete = new FreteDTO();
+		frete.setCpfCnpjDestinatario(pedido.getCpfCnpj());
+		frete.setCpfCnpjRemetente(properties.getProperty("cnpj"));
+		frete.setQuantidadeProdutos(pedido.getProdutos().size());
+		frete.setValorTotalRemessa(pedido.getProdutos().stream().mapToDouble(p -> p.getValor()).sum());
+		return frete;
 	}
 
 }

@@ -3,6 +3,7 @@ package br.com.fiap.fornecedor.ws;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Properties;
 
@@ -100,8 +101,16 @@ public class FornecedorWS {
 		Client client = ClientBuilder.newClient();
 		WebTarget target = client.target(properties.getProperty("transportadora-url")).path(properties.getProperty("transportadora-path"));
 		Builder builder = target.request(MediaType.APPLICATION_JSON);
+		String auth = getAuth();
+		builder.header("Authorization", auth);
 		FreteDTO frete = criarFrete(pedido);
 		return builder.post(Entity.entity(frete, MediaType.APPLICATION_JSON));
+	}
+	
+	private static String getAuth() {
+		byte[] auth = properties.getProperty("transportadora-auth").getBytes();
+		String encoded = Base64.getEncoder().encodeToString(auth);
+		return String.format("Basic %s", encoded);
 	}
 	
 	private static FreteDTO criarFrete(PedidoDTO pedido) {

@@ -27,6 +27,7 @@ import javax.xml.ws.handler.MessageContext;
 import br.com.fiap.fornecedor.client.governo.Exception_Exception;
 import br.com.fiap.fornecedor.client.governo.Governo;
 import br.com.fiap.fornecedor.client.governo.GovernoService;
+import br.com.fiap.fornecedor.client.governo.NotaFiscal;
 import br.com.fiap.fornecedor.dto.FreteDTO;
 import br.com.fiap.fornecedor.dto.PedidoDTO;
 import br.com.fiap.fornecedor.dto.ProdutoDTO;
@@ -80,15 +81,10 @@ public class FornecedorWS {
 		service.autheticate(webServiceContext);
 		pedidosRealizados.add(pedido);
 		
-		// TODO Emitir nota fiscal no WS do grupo Governo
+		// Emitir nota fiscal no WS do grupo Governo
+		NotaFiscal notaFiscal = null;
 		try {
-			Governo port = new GovernoService().getGovernoPort();
-			Map<String, Object> context = ((BindingProvider) port).getRequestContext();
-			Map<String, List<String>> headers = new HashMap<>();
-			headers.put("documento", Collections.singletonList("11111111111"));
-			headers.put("senha", Collections.singletonList("1234"));
-			context.put(MessageContext.HTTP_REQUEST_HEADERS, headers);
-			port.emitirNotaFiscal(pedido.getCpfCnpj(), 12d);
+			notaFiscal = emitirNotaFiscal(pedido);
 		} catch (Exception_Exception e) {
 			System.err.println("Erro na requisição de emissão de NF");
 			e.printStackTrace();
@@ -99,7 +95,7 @@ public class FornecedorWS {
 		
 		// Solicitar entrega no grupo Transportadora
 		try {
-			Response response = gerarFrete(pedido);
+			Response response = gerarFrete(pedido, notaFiscal.getValorTotal() + notaFiscal.getValorTotalImpostos());
 			if (response.getStatus() >= 400) {
 				RetornoTransportadoraDTO retorno = response.readEntity(RetornoTransportadoraDTO.class);
 				System.err.println("Erro ao gerar frete na trasportadora");
@@ -116,13 +112,24 @@ public class FornecedorWS {
 		return true;
 	}
 	
-	private static Response gerarFrete(PedidoDTO pedido) {
+	private static NotaFiscal emitirNotaFiscal(PedidoDTO pedido) throws Exception_Exception {
+		Governo port = new GovernoService().getGovernoPort();
+		Map<String, Object> context = ((BindingProvider) port).getRequestContext();
+		Map<String, List<String>> headers = new HashMap<>();
+		headers.put("documento", Collections.singletonList(properties.getProperty("cnpj")));
+		headers.put("senha", Collections.singletonList(properties.getProperty("governo-senha")));
+		context.put(MessageContext.HTTP_REQUEST_HEADERS, headers);
+		double valor = pedido.getProdutos().stream().mapToDouble(p -> p.getValor()).sum();
+		return port.emitirNotaFiscal(pedido.getCpfCnpj(), valor);
+	}
+	
+	private static Response gerarFrete(PedidoDTO pedido, double total) {
 		Client client = ClientBuilder.newClient();
 		WebTarget target = client.target(properties.getProperty("transportadora-url")).path(properties.getProperty("transportadora-path"));
 		Builder builder = target.request(MediaType.APPLICATION_JSON);
 		String auth = getAuth();
 		builder.header("Authorization", auth);
-		FreteDTO frete = criarFrete(pedido);
+		FreteDTO frete = criarFrete(pedido, total);
 		return builder.post(Entity.entity(frete, MediaType.APPLICATION_JSON));
 	}
 	
@@ -132,12 +139,12 @@ public class FornecedorWS {
 		return String.format("Basic %s", encoded);
 	}
 	
-	private static FreteDTO criarFrete(PedidoDTO pedido) {
+	private static FreteDTO criarFrete(PedidoDTO pedido, double total) {
 		FreteDTO frete = new FreteDTO();
 		frete.setCpfCnpjDestinatario(pedido.getCpfCnpj());
 		frete.setCpfCnpjRemetente(properties.getProperty("cnpj"));
 		frete.setQuantidadeProdutos(pedido.getProdutos().size());
-		frete.setValorTotalRemessa(pedido.getProdutos().stream().mapToDouble(p -> p.getValor()).sum());
+		frete.setValorTotalRemessa(total);
 		return frete;
 	}
 

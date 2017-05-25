@@ -4,7 +4,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Base64;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 
 import javax.annotation.Resource;
@@ -17,8 +20,13 @@ import javax.ws.rs.client.Invocation.Builder;
 import javax.ws.rs.client.WebTarget;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
+import javax.xml.ws.BindingProvider;
 import javax.xml.ws.WebServiceContext;
+import javax.xml.ws.handler.MessageContext;
 
+import br.com.fiap.fornecedor.client.governo.Exception_Exception;
+import br.com.fiap.fornecedor.client.governo.Governo;
+import br.com.fiap.fornecedor.client.governo.GovernoService;
 import br.com.fiap.fornecedor.dto.FreteDTO;
 import br.com.fiap.fornecedor.dto.PedidoDTO;
 import br.com.fiap.fornecedor.dto.ProdutoDTO;
@@ -72,9 +80,20 @@ public class FornecedorWS {
 		service.autheticate(webServiceContext);
 		pedidosRealizados.add(pedido);
 		
-		
-		
 		// TODO Emitir nota fiscal no WS do grupo Governo
+		try {
+			Governo port = new GovernoService().getGovernoPort();
+			Map<String, Object> context = ((BindingProvider) port).getRequestContext();
+			Map<String, List<String>> headers = new HashMap<>();
+			headers.put("documento", Collections.singletonList("11111111111"));
+			headers.put("senha", Collections.singletonList("1234"));
+			context.put(MessageContext.HTTP_REQUEST_HEADERS, headers);
+			port.emitirNotaFiscal(pedido.getCpfCnpj(), 12d);
+		} catch (Exception_Exception e) {
+			System.err.println("Erro na requisição de emissão de NF");
+			e.printStackTrace();
+			return false;
+		}
 		
 		// TODO Debitar valor total do grupo Financeira
 		

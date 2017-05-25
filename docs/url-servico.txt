@@ -1,0 +1,1 @@
+URL do Web service: http://54.161.101.155/Fornecedor/FornecedorWS?wsdl

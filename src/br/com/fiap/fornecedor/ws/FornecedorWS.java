@@ -24,6 +24,9 @@ import javax.xml.ws.BindingProvider;
 import javax.xml.ws.WebServiceContext;
 import javax.xml.ws.handler.MessageContext;
 
+import br.com.fiap.fornecedor.client.financeira.Cobranca;
+import br.com.fiap.fornecedor.client.financeira.CobrarCliente;
+import br.com.fiap.fornecedor.client.financeira.CobrarClienteService;
 import br.com.fiap.fornecedor.client.governo.Exception_Exception;
 import br.com.fiap.fornecedor.client.governo.Governo;
 import br.com.fiap.fornecedor.client.governo.GovernoService;
@@ -91,11 +94,24 @@ public class FornecedorWS {
 			return false;
 		}
 		
-		// TODO Debitar valor total do grupo Financeira
+		double total = notaFiscal.getValorTotal() + notaFiscal.getValorTotalImpostos();
+		
+		// Debitar valor total do grupo Financeira
+		try {
+			boolean cobrou = cobrar(pedido, total);
+			if (!cobrou) {
+				System.err.println("Erro ao cobrar");
+				return false;
+			}
+		} catch (Exception e) {
+			System.err.println("Erro na requisição da cobrança");
+			e.printStackTrace();
+			return false;
+		}
 		
 		// Solicitar entrega no grupo Transportadora
 		try {
-			Response response = gerarFrete(pedido, notaFiscal.getValorTotal() + notaFiscal.getValorTotalImpostos());
+			Response response = gerarFrete(pedido, total);
 			if (response.getStatus() >= 400) {
 				RetornoTransportadoraDTO retorno = response.readEntity(RetornoTransportadoraDTO.class);
 				System.err.println("Erro ao gerar frete na trasportadora");
@@ -121,6 +137,19 @@ public class FornecedorWS {
 		context.put(MessageContext.HTTP_REQUEST_HEADERS, headers);
 		double valor = pedido.getProdutos().stream().mapToDouble(p -> p.getValor()).sum();
 		return port.emitirNotaFiscal(pedido.getCpfCnpj(), valor);
+	}
+	
+	private static boolean cobrar(PedidoDTO pedido, double total) {
+		CobrarCliente port = new CobrarClienteService().getCobrarClientePort();
+		Map<String, Object> context = ((BindingProvider) port).getRequestContext();
+		context.put(BindingProvider.ENDPOINT_ADDRESS_PROPERTY, properties.getProperty("financeira-url"));
+		Map<String, List<String>> headers = new HashMap<>();
+		headers.put("cargo", Collections.singletonList(properties.getProperty("financeira-cargo")));
+		context.put(MessageContext.HTTP_REQUEST_HEADERS, headers);
+		Cobranca cobranca = new Cobranca();
+		cobranca.setCpf(Long.parseLong(pedido.getCpfCnpj()));
+		cobranca.setValor(total);
+		return port.cobrar(cobranca);
 	}
 	
 	private static Response gerarFrete(PedidoDTO pedido, double total) {
